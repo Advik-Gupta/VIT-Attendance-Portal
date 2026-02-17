@@ -6,6 +6,8 @@ import {
   GoogleAuthProvider,
   signInWithRedirect,
   onAuthStateChanged,
+  getRedirectResult,
+  signInWithPopup,
 } from "firebase/auth";
 import { auth } from "@/app/lib/firebase";
 import { useRouter } from "next/navigation";
@@ -14,6 +16,16 @@ export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
+    const handleRedirect = async () => {
+      try {
+        await getRedirectResult(auth);
+      } catch (error) {
+        console.error("Redirect error:", error);
+      }
+    };
+
+    handleRedirect();
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         router.replace("/");
@@ -30,7 +42,14 @@ export default function LoginPage() {
         prompt: "select_account",
       });
 
-      await signInWithRedirect(auth, provider);
+      if (window.location.hostname === "localhost") {
+        const result = await signInWithPopup(auth, provider);
+        if (result.user) {
+          router.replace("/");
+        }
+      } else {
+        await signInWithRedirect(auth, provider);
+      }
     } catch (error) {
       console.error("Google login failed:", error);
     }
