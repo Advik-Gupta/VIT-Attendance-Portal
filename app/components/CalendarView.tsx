@@ -131,13 +131,24 @@ export default function CalendarView({
     subjectId: string,
     status: AttendanceStatus,
   ) => {
-    const updated: AttendanceRecord = {
-      ...attendance,
-      [date]: {
-        ...(attendance[date] ?? {}),
+    const currentStatus = attendance[date]?.[subjectId];
+
+    const updated: AttendanceRecord = { ...attendance };
+
+    if (currentStatus === status) {
+      if (updated[date]) {
+        delete updated[date][subjectId];
+
+        if (Object.keys(updated[date]).length === 0) {
+          delete updated[date];
+        }
+      }
+    } else {
+      updated[date] = {
+        ...(updated[date] ?? {}),
         [subjectId]: status,
-      },
-    };
+      };
+    }
 
     setAttendance(updated);
     saveToStorage("attendance", updated);
@@ -171,7 +182,7 @@ export default function CalendarView({
           </div>
           {todayMonthKey && (
             <button className="cal-now-btn" onClick={jumpToNow}>
-              ⟳ Now
+              Jump to today
             </button>
           )}
         </div>
