@@ -20,15 +20,6 @@ const STATUS_CONFIG: Record<string, { label: string; activeClass: string }> = {
 };
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const WEEKDAY_FULL = [
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-  "Sunday",
-];
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
@@ -36,7 +27,6 @@ function formatDate(dateStr: string) {
     day: String(d.getDate()).padStart(2, "0"),
     month: d.toLocaleString("en-GB", { month: "short" }),
     year: d.getFullYear(),
-    // 0=Sun … 6=Sat → Mon-first index
     weekdayIdx: (d.getDay() + 6) % 7,
   };
 }
@@ -132,22 +122,15 @@ export default function CalendarView({
     status: AttendanceStatus,
   ) => {
     const currentStatus = attendance[date]?.[subjectId];
-
     const updated: AttendanceRecord = { ...attendance };
 
     if (currentStatus === status) {
       if (updated[date]) {
         delete updated[date][subjectId];
-
-        if (Object.keys(updated[date]).length === 0) {
-          delete updated[date];
-        }
+        if (Object.keys(updated[date]).length === 0) delete updated[date];
       }
     } else {
-      updated[date] = {
-        ...(updated[date] ?? {}),
-        [subjectId]: status,
-      };
+      updated[date] = { ...(updated[date] ?? {}), [subjectId]: status };
     }
 
     setAttendance(updated);
@@ -157,13 +140,66 @@ export default function CalendarView({
   const activeDays = monthMap[activeMonth] ?? [];
   const weeks = buildWeeks(activeDays);
   const monthLabel = activeDays.length ? getMonthLabel(activeDays[0].date) : "";
-
   const STATUS_OPTIONS: AttendanceStatus[] = [
     "present",
     "absent",
     "od",
     "cancelled",
   ];
+
+  const renderSubjectCard = (
+    day: DailyCalendarEntry,
+    subjectId: string,
+    isMobile: boolean,
+  ) => {
+    const sub = subjects.find((s: Subject) => s.id === subjectId);
+    if (!sub) return null;
+    const currentStatus: string | undefined = attendance?.[day.date]?.[sub.id];
+    const cardClass = isMobile ? "cal-mob-subject-card" : "cal-subject-card";
+    const nameClass = isMobile ? "cal-mob-subject-name" : "cal-subject-name";
+    const typeClass = isMobile ? "cal-mob-subject-type" : "cal-subject-type";
+    const headerClass = isMobile ? "cal-mob-subject-top" : "cal-subject-header";
+    const rowClass = isMobile ? "cal-mob-status-row" : "cal-status-row";
+    const btnClass = isMobile ? "cal-mob-status-btn" : "status-btn";
+
+    return (
+      <div
+        key={sub.id}
+        className={`${cardClass}${currentStatus ? ` dot-${currentStatus}` : ""}`}
+      >
+        <div className={headerClass}>
+          <span
+            className={nameClass}
+            onClick={() => openModal(sub)}
+            title={sub.name}
+          >
+            {sub.name}
+          </span>
+          <span
+            className={`${typeClass} ${sub.type === "lab" ? "type-lab" : "type-theory"}`}
+          >
+            {sub.type === "lab" ? "Lab" : "Th"}
+          </span>
+        </div>
+        <div className={rowClass}>
+          {STATUS_OPTIONS.map((status) => (
+            <button
+              key={status}
+              onClick={() => toggleStatus(day.date, sub.id, status)}
+              className={`${btnClass} ${currentStatus === status ? STATUS_CONFIG[status].activeClass : ""}`}
+              title={STATUS_CONFIG[status].label}
+            >
+              {status === "cancelled"
+                ? "cncl"
+                : status === "present"
+                  ? "pres"
+                  : status}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -193,6 +229,7 @@ export default function CalendarView({
               <span className="cal-month-title">{monthLabel}</span>
             </div>
 
+            {/* ── DESKTOP GRID ── */}
             <div className="cal-weekday-row">
               {WEEKDAY_LABELS.map((lbl, i) => (
                 <div
@@ -252,53 +289,9 @@ export default function CalendarView({
                           <span className="cal-no-class">—</span>
                         )}
                         {isInstructional &&
-                          subjectIds.map((subjectId: string) => {
-                            const sub = subjects.find(
-                              (s: Subject) => s.id === subjectId,
-                            );
-                            if (!sub) return null;
-                            const currentStatus: string | undefined =
-                              attendance?.[day.date]?.[sub.id];
-                            return (
-                              <div
-                                key={sub.id}
-                                className={`cal-subject-card${currentStatus ? ` dot-${currentStatus}` : ""}`}
-                              >
-                                <div className="cal-subject-header">
-                                  <span
-                                    className="cal-subject-name"
-                                    onClick={() => openModal(sub)}
-                                    title={sub.name}
-                                  >
-                                    {sub.name}
-                                  </span>
-                                  <span
-                                    className={`cal-subject-type ${sub.type === "lab" ? "type-lab" : "type-theory"}`}
-                                  >
-                                    {sub.type === "lab" ? "Lab" : "Th"}
-                                  </span>
-                                </div>
-                                <div className="cal-status-row">
-                                  {STATUS_OPTIONS.map((status) => (
-                                    <button
-                                      key={status}
-                                      onClick={() =>
-                                        toggleStatus(day.date, sub.id, status)
-                                      }
-                                      className={`status-btn ${currentStatus === status ? STATUS_CONFIG[status].activeClass : ""}`}
-                                      title={STATUS_CONFIG[status].label}
-                                    >
-                                      {status === "cancelled"
-                                        ? "cncl"
-                                        : status === "present"
-                                          ? "pres"
-                                          : status}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
+                          subjectIds.map((sid) =>
+                            renderSubjectCard(day, sid, false),
+                          )}
                       </div>
                     </div>
                   );
@@ -306,11 +299,18 @@ export default function CalendarView({
               </div>
             ))}
 
-            <div className="cal-mobile-list">
+            {/* ── MOBILE: horizontal scroll per week ── */}
+            <div className="cal-mobile-weeks">
               {weeks.map((week, wi) => (
-                <div key={wi} className="cal-mob-week">
+                <div key={wi} className="cal-mob-week-row">
                   {week.map((day, di) => {
-                    if (!day) return null; // skip empty padding cells entirely on mobile
+                    if (!day)
+                      return (
+                        <div
+                          key={`mob-empty-${wi}-${di}`}
+                          className="cal-mob-day-card cal-mob-day-empty"
+                        />
+                      );
                     const isToday = day.date === todayISO;
                     const isWeekend = di >= 5;
                     const subjectIds: string[] =
@@ -322,31 +322,30 @@ export default function CalendarView({
                       <div
                         key={day.date}
                         ref={isToday ? todayRef : null}
-                        className={`cal-mob-day${!isInstructional ? " non-instructional" : ""}${isWeekend ? " is-weekend" : ""}${isToday ? " is-today" : ""}`}
+                        className={`cal-mob-day-card${!isInstructional ? " non-instructional" : ""}${isWeekend ? " is-weekend" : ""}${isToday ? " is-today" : ""}`}
                       >
-                        <div className="cal-mob-date-col">
+                        <div className="cal-mob-card-header">
                           <span
-                            className={`cal-mob-day-num${isToday ? " is-today" : ""}`}
-                          >
-                            {dayNum}
-                          </span>
-                          <span
-                            className={`cal-mob-day-name${isWeekend ? " is-weekend" : ""}`}
+                            className={`cal-mob-card-dayname${isWeekend ? " is-weekend" : ""}`}
                           >
                             {WEEKDAY_LABELS[weekdayIdx]}
                           </span>
+                          <span
+                            className={`cal-mob-card-daynum${isToday ? " is-today" : ""}`}
+                          >
+                            {dayNum}
+                          </span>
                           {isToday && <span className="cal-mob-today-dot" />}
                           {isInstructional && (
-                            <span className="cal-mob-day-type">
+                            <span className="cal-mob-card-type">
                               {day.title
                                 ?.replace("Instructional Day", "Inst.")
-                                .replace(" Day Order", "\nOrd.")
+                                .replace(" Day Order", " Ord.")
                                 .replace("First ", "")}
                             </span>
                           )}
                         </div>
-
-                        <div className="cal-mob-subjects-col">
+                        <div className="cal-mob-card-subjects">
                           {!isInstructional && (
                             <span className="cal-mob-no-class">— no class</span>
                           )}
@@ -356,53 +355,9 @@ export default function CalendarView({
                             </span>
                           )}
                           {isInstructional &&
-                            subjectIds.map((subjectId: string) => {
-                              const sub = subjects.find(
-                                (s: Subject) => s.id === subjectId,
-                              );
-                              if (!sub) return null;
-                              const currentStatus: string | undefined =
-                                attendance?.[day.date]?.[sub.id];
-                              return (
-                                <div
-                                  key={sub.id}
-                                  className={`cal-mob-subject-card${currentStatus ? ` dot-${currentStatus}` : ""}`}
-                                >
-                                  <div className="cal-mob-subject-top">
-                                    <span
-                                      className="cal-mob-subject-name"
-                                      onClick={() => openModal(sub)}
-                                      title={sub.name}
-                                    >
-                                      {sub.name}
-                                    </span>
-                                    <span
-                                      className={`cal-mob-subject-type ${sub.type === "lab" ? "type-lab" : "type-theory"}`}
-                                    >
-                                      {sub.type === "lab" ? "Lab" : "Th"}
-                                    </span>
-                                  </div>
-                                  <div className="cal-mob-status-row">
-                                    {STATUS_OPTIONS.map((status) => (
-                                      <button
-                                        key={status}
-                                        onClick={() =>
-                                          toggleStatus(day.date, sub.id, status)
-                                        }
-                                        className={`cal-mob-status-btn ${currentStatus === status ? STATUS_CONFIG[status].activeClass : ""}`}
-                                        title={STATUS_CONFIG[status].label}
-                                      >
-                                        {status === "cancelled"
-                                          ? "cncl"
-                                          : status === "present"
-                                            ? "pres"
-                                            : status}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })}
+                            subjectIds.map((sid) =>
+                              renderSubjectCard(day, sid, true),
+                            )}
                         </div>
                       </div>
                     );

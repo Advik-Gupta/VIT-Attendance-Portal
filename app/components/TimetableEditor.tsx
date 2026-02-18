@@ -34,6 +34,20 @@ export default function TimetableEditor({
   const [name, setName] = useState("");
   const [type, setType] = useState<"theory" | "lab">("theory");
   const [saving, setSaving] = useState(false);
+  const [collapsedDays, setCollapsedDays] = useState<Record<number, boolean>>({
+    1: true,
+    2: true,
+    3: true,
+    4: true,
+    5: true,
+  });
+  const [dragOverDay, setDragOverDay] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // For reordering within a day: track which item is being dragged
+  const [draggingItem, setDraggingItem] = useState<{
+    day: Weekday;
+    index: number;
+  } | null>(null);
 
   const addSubject = () => {
     if (!name.trim()) return;
@@ -44,11 +58,33 @@ export default function TimetableEditor({
     setName("");
   };
 
-  const onDrop = (day: Weekday, subjectId: string) => {
+  const removeFromDay = (day: Weekday, index: number) => {
     const updated = {
       ...timetable,
-      [day]: [...(timetable[day] || []), subjectId],
+      [day]: (timetable[day] || []).filter((_, i) => i !== index),
     };
+    setTimetable(updated);
+    saveToStorage("timetable", updated);
+  };
+
+  const moveWithinDay = (day: Weekday, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const arr = [...(timetable[day] || [])];
+    const [item] = arr.splice(fromIndex, 1);
+    arr.splice(toIndex, 0, item);
+    const updated = { ...timetable, [day]: arr };
+    setTimetable(updated);
+    saveToStorage("timetable", updated);
+  };
+
+  const onDropToDay = (day: Weekday, subjectId: string, atIndex?: number) => {
+    const arr = [...(timetable[day] || [])];
+    if (atIndex !== undefined) {
+      arr.splice(atIndex, 0, subjectId);
+    } else {
+      arr.push(subjectId);
+    }
+    const updated = { ...timetable, [day]: arr };
     setTimetable(updated);
     saveToStorage("timetable", updated);
   };
@@ -57,6 +93,10 @@ export default function TimetableEditor({
     setSaving(true);
     await onForceSave();
     setSaving(false);
+  };
+
+  const toggleDay = (day: number) => {
+    setCollapsedDays((prev) => ({ ...prev, [day]: !prev[day] }));
   };
 
   return (
@@ -123,7 +163,10 @@ export default function TimetableEditor({
               <div
                 key={sub.id}
                 draggable
-                onDragStart={(e) => e.dataTransfer.setData("subjectId", sub.id)}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("subjectId", sub.id);
+                  e.dataTransfer.setData("fromPool", "true");
+                }}
                 className={`tt-chip ${sub.type === "lab" ? "tt-chip-lab" : "tt-chip-theory"}`}
               >
                 <span>{sub.name}</span>
@@ -136,49 +179,120 @@ export default function TimetableEditor({
         <div className="tt-grid">
           {weekdays.map((day) => {
             const daySubjects = (timetable[day.value] || []) as string[];
+            const isCollapsed = collapsedDays[day.value];
+
             return (
               <div
                 key={day.value}
                 onDragOver={(e) => {
                   e.preventDefault();
-                  (e.currentTarget as HTMLElement).classList.add("drag-over");
+                  setDragOverDay(day.value);
                 }}
                 onDragLeave={(e) => {
-                  (e.currentTarget as HTMLElement).classList.remove(
-                    "drag-over",
-                  );
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDragOverDay(null);
+                    setDragOverIndex(null);
+                  }
                 }}
                 onDrop={(e) => {
-                  (e.currentTarget as HTMLElement).classList.remove(
-                    "drag-over",
-                  );
+                  e.preventDefault();
+                  setDragOverDay(null);
+                  setDragOverIndex(null);
+
+                  const fromPool = e.dataTransfer.getData("fromPool");
                   const subjectId = e.dataTransfer.getData("subjectId");
-                  onDrop(day.value, subjectId);
+                  const fromDay = e.dataTransfer.getData("fromDay");
+                  const fromIndex = parseInt(
+                    e.dataTransfer.getData("fromIndex"),
+                    10,
+                  );
+
+                  if (fromPool === "true" && subjectId) {
+                    onDropToDay(day.value, subjectId);
+                  } else if (fromDay && !isNaN(fromIndex)) {
+                    const fromDayNum = parseInt(fromDay, 10) as Weekday;
+                    if (fromDayNum === day.value) {
+                      moveWithinDay(
+                        day.value,
+                        fromIndex,
+                        dragOverIndex ?? daySubjects.length,
+                      );
+                    }
+                  }
                 }}
-                className="tt-day-col"
+                className={`tt-day-col${dragOverDay === day.value ? " drag-over" : ""}`}
               >
-                <div className="tt-day-header">
+                <div
+                  className="tt-day-header"
+                  onClick={() => toggleDay(day.value)}
+                  style={{ cursor: "pointer" }}
+                >
                   <span className="tt-day-name">{day.label}</span>
-                  <span className="tt-day-count">{daySubjects.length}</span>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.4rem",
+                    }}
+                  >
+                    <span className="tt-day-count">{daySubjects.length}</span>
+                    <span className="tt-collapse-icon">
+                      {isCollapsed ? "▸" : "▾"}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="tt-day-subjects-scroll">
-                  {daySubjects.map((id: string) => {
-                    const sub = subjects.find((s: Subject) => s.id === id);
-                    if (!sub) return null;
-                    return (
-                      <div
-                        key={id}
-                        className={`tt-subject-pill ${sub.type === "lab" ? "tt-subject-pill-lab" : "tt-subject-pill-theory"}`}
-                      >
-                        <span className="tt-pill-name">{sub.name}</span>
-                        <span className="tt-pill-badge">{sub.type}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                {!isCollapsed && (
+                  <div className="tt-day-subjects-scroll">
+                    {daySubjects.map((id: string, index: number) => {
+                      const sub = subjects.find((s: Subject) => s.id === id);
+                      if (!sub) return null;
+                      return (
+                        <div
+                          key={`${id}-${index}`}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("subjectId", id);
+                            e.dataTransfer.setData(
+                              "fromDay",
+                              String(day.value),
+                            );
+                            e.dataTransfer.setData("fromIndex", String(index));
+                            e.dataTransfer.setData("fromPool", "false");
+                            setDraggingItem({ day: day.value, index });
+                          }}
+                          onDragEnd={() => setDraggingItem(null)}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDragOverIndex(index);
+                          }}
+                          className={`tt-subject-pill ${sub.type === "lab" ? "tt-subject-pill-lab" : "tt-subject-pill-theory"} tt-subject-pill-draggable${draggingItem?.day === day.value && draggingItem?.index === index ? " tt-pill-dragging" : ""}`}
+                        >
+                          <span className="tt-drag-handle">⠿</span>
+                          <span className="tt-pill-name">{sub.name}</span>
+                          <span className="tt-pill-badge">{sub.type}</span>
+                          <button
+                            className="tt-pill-remove"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFromDay(day.value, index);
+                            }}
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
 
-                {daySubjects.length === 0 && (
+                    {daySubjects.length === 0 && (
+                      <span className="tt-drop-hint">drop here</span>
+                    )}
+                  </div>
+                )}
+
+                {isCollapsed && daySubjects.length === 0 && (
                   <span className="tt-drop-hint">drop here</span>
                 )}
               </div>
