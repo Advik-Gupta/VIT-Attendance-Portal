@@ -464,3 +464,47 @@
     padding-bottom: 1rem;
   }
 }
+
+/* ── Touch drag ghost ── */
+.tt-touch-ghost {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  background: linear-gradient(135deg, #0d9488, #0891b2);
+  color: #fff;
+  font-family: "Syne", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  opacity: 0.92;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: scale(1.05);
+  transition: transform 0.1s;
+}
+
+/* ── Pool hint ── */
+.tt-pool-hint {
+  font-family: "Geist Mono", monospace;
+  font-size: 0.62rem;
+  color: #2e3a4e;
+  letter-spacing: 0.06em;
+  margin: 0.25rem 0 0 0;
+}
+
+/* Prevent page scroll while touch-dragging */
+.tt-root {
+  touch-action: pan-y;
+}
+
+.tt-subject-pill-draggable {
+  touch-action: none;
+}
+
+.tt-chip {
+  touch-action: none;
+}
